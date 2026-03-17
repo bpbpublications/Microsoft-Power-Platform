@@ -1,0 +1,23 @@
+# 1. Install Power Platform CLI (if not already installed)
+dotnet tool install --global Microsoft.PowerPlatform.CLI
+
+# 2. Authenticate with Power Platform environment
+pac auth create --url https://yourorg.crm.dynamics.com --name DevEnv
+
+# 3. Export a solution from Power Platform
+pac solution export --path ./MySolution.zip --name MySolution --publisher MyPublisher --version 1.0.0.0
+
+# 4. Import the solution into another environment
+pac auth create --url https://targetorg.crm.dynamics.com --name ProdEnv
+pac solution import --path ./MySolution.zip --target https://targetorg.crm.dynamics.com
+
+# 5. Trigger a flow (Power Automate) via HTTP request
+Invoke-RestMethod -Method Post `
+  -Uri "https://prod.flow.microsoft.com/api/flows/yourflowid/run" `
+  -Headers @{ Authorization = "Bearer $accessToken" } `
+  -Body @{ key1 = "value1"; key2 = "value2" }
+
+# 6. Read data from Dataverse using Web API
+Invoke-RestMethod -Method Get `
+  -Uri "https://yourorg.crm.dynamics.com/api/data/v9.2/accounts?$select=name,accountnumber" `
+  -Headers @{ Authorization = "Bearer $accessToken" }

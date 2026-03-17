@@ -1,0 +1,154 @@
+import { IInputs, IOutputs } from "./generated/ManifestTypes";
+import { ComponentFramework } from "powerapps-component-framework";
+
+export class AccountCrudPCF implements ComponentFramework.StandardControl<IInputs, IOutputs> {
+    private container: HTMLDivElement;
+    private context: ComponentFramework.Context<IInputs>;
+
+    public init(context: ComponentFramework.Context<IInputs>, notifyOutputChanged: () => void, state: ComponentFramework.Dictionary, container: HTMLDivElement) {
+        this.context = context;
+        this.container = container;
+
+        // UI
+        const createBtn = document.createElement("button");
+        createBtn.innerText = "Create Account";
+        createBtn.onclick = () => this.createAccount();
+
+        const readBtn = document.createElement("button");
+        readBtn.innerText = "Read Account";
+        readBtn.onclick = () => this.readAccount();
+
+        const updateBtn = document.createElement("button");
+        updateBtn.innerText = "Update Account";
+        updateBtn.onclick = () => this.updateAccount();
+
+        const deleteBtn = document.createElement("button");
+        deleteBtn.innerText = "Delete Account";
+        deleteBtn.onclick = () => this.deleteAccount();
+
+        const retrieveBtn = document.createElement("button");
+        retrieveBtn.innerText = "Retrieve Accounts with Contacts";
+        retrieveBtn.onclick = () => this.retrieveAccountsWithContacts();
+
+        this.container.appendChild(createBtn);
+        this.container.appendChild(readBtn);
+        this.container.appendChild(updateBtn);
+        this.container.appendChild(deleteBtn);
+        this.container.appendChild(retrieveBtn);
+    }
+
+    public updateView(context: ComponentFramework.Context<IInputs>): void {
+        this.context = context;
+    }
+
+    public getOutputs(): IOutputs { return {}; }
+    public destroy(): void {}
+
+    // -------------------------------
+    // CREATE
+    // -------------------------------
+    private async createAccount() {
+        const newAccount = {
+            name: "Contoso Ltd", // Text
+            "primarycontactid@odata.bind": "/contacts(00000000-0000-0000-0000-000000000001)", // Lookup
+            custom_statuscode: 100000000, // Option set
+            createdon: new Date().toISOString(), // Datetime
+            revenue: 50000 // Currency
+        };
+
+        try {
+            this.validateAccountData(newAccount);
+            const result = await this.context.webAPI.createRecord("account", newAccount);
+            alert("Created Account ID: " + result.id);
+            (this.context as any).accountId = result.id;
+        } catch (error) {
+            alert("Error creating account: " + error.message);
+        }
+    }
+
+    // -------------------------------
+    // READ
+    // -------------------------------
+    private async readAccount() {
+        const accountId = (this.context as any).accountId;
+        if (!accountId) return alert("No account created yet.");
+        try {
+            const result = await this.context.webAPI.retrieveRecord("account", accountId, "?$select=name,revenue,createdon,custom_statuscode");
+            alert(`Account: ${result.name}, Revenue: ${result.revenue}, Created: ${result.createdon}`);
+        } catch (error) {
+            alert("Error reading account: " + error.message);
+        }
+    }
+
+    // -------------------------------
+    // UPDATE
+    // -------------------------------
+    private async updateAccount() {
+        const accountId = (this.context as any).accountId;
+        if (!accountId) return alert("No account created yet.");
+        const updateData = {
+            revenue: 75000,
+            custom_statuscode: 100000001
+        };
+        try {
+            await this.context.webAPI.updateRecord("account", accountId, updateData);
+            alert("Account updated.");
+        } catch (error) {
+            alert("Error updating account: " + error.message);
+        }
+    }
+
+    // -------------------------------
+    // DELETE
+    // -------------------------------
+    private async deleteAccount() {
+        const accountId = (this.context as any).accountId;
+        if (!accountId) return alert("No account created yet.");
+        try {
+            await this.context.webAPI.deleteRecord("account", accountId);
+            alert("Account deleted.");
+            (this.context as any).accountId = null;
+        } catch (error) {
+            alert("Error deleting account: " + error.message);
+        }
+    }
+
+    // -------------------------------
+    // RETRIEVE MULTIPLE with Linked Entity
+    // -------------------------------
+    private async retrieveAccountsWithContacts() {
+        const fetchXml = `
+          <fetch top="10">
+            <entity name="account">
+              <attribute name="name" />
+              <attribute name="revenue" />
+              <attribute name="createdon" />
+              <link-entity name="contact" from="contactid" to="primarycontactid" alias="contact">
+                <attribute name="firstname" />
+                <attribute name="lastname" />
+                <attribute name="emailaddress1" />
+              </link-entity>
+            </entity>
+          </fetch>`;
+
+        try {
+            const result = await this.context.webAPI.retrieveMultipleRecords("account", "?fetchXml=" + encodeURIComponent(fetchXml));
+            result.entities.forEach(acc => {
+                alert(`Account: ${acc.name}, Revenue: ${acc.revenue}, Contact: ${acc["contact.firstname"]} ${acc["contact.lastname"]}, Email: ${acc["contact.emailaddress1"]}`);
+            });
+        } catch (error) {
+            alert("Error retrieving accounts: " + error.message);
+        }
+    }
+
+    // -------------------------------
+    // VALIDATION
+    // -------------------------------
+    private validateAccountData(data: any) {
+        if (!data.name || data.name.trim() === "") throw new Error("Account name (text field) is required.");
+        if (!data["primarycontactid@odata.bind"]) throw new Error("Primary Contact (lookup field) is required.");
+        if (typeof data.custom_statuscode !== "number") throw new Error("Status (option set) must be numeric.");
+        if (!data.createdon || isNaN(Date.parse(data.createdon))) throw new Error("CreatedOn (datetime) must be a valid date.");
+        if (typeof data.revenue !== "number") throw new Error("Revenue (currency) must be numeric.");
+    }
+}

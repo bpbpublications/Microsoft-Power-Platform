@@ -1,0 +1,43 @@
+# -------------------------------
+# Power Platform Migration Script
+# -------------------------------
+
+# 1. Authenticate with environment
+$connectionString = "AuthType=OAuth;Url=https://yourorg.crm.dynamics.com;
+                     UserName=admin@yourtenant.onmicrosoft.com;
+                     Password=YourPassword;
+                     AppId=00000000-0000-0000-0000-000000000000;
+                     RedirectUri=https://login.microsoftonline.com/common/oauth2/nativeclient;
+                     LoginPrompt=Auto"
+
+# 2. Export solution from Source Environment
+pac solution export `
+  --path ./ExportedSolutions/MySolution.zip `
+  --name MySolution `
+  --publisher MyPublisher `
+  --version 1.0.0.0 `
+  --target https://source.crm.dynamics.com
+
+Write-Host "Solution exported successfully."
+
+# 3. Import solution into Target Environment
+pac solution import `
+  --path ./ExportedSolutions/MySolution.zip `
+  --target https://target.crm.dynamics.com
+
+Write-Host "Solution imported successfully."
+
+# 4. Export configuration data (lookup tables, settings)
+Export-CrmConfiguration `
+  -ConnectionString $connectionString `
+  -SchemaFile "schema.xml" `
+  -DataFile "configdata.zip"
+
+Write-Host "Configuration data exported."
+
+# 5. Import configuration data into Target Environment
+Import-CrmConfiguration `
+  -ConnectionString $connectionString `
+  -DataFile "configdata.zip"
+
+Write-Host "Configuration data imported."

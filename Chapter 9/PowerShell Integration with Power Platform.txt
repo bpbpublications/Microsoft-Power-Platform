@@ -1,0 +1,37 @@
+# 1. Authenticate using Azure AD App Registration
+$tenantId = "your-tenant-id"
+$clientId = "your-client-id"
+$clientSecret = "your-client-secret"
+$resource = "https://yourorg.crm.dynamics.com"
+
+$body = @{
+    grant_type    = "client_credentials"
+    client_id     = $clientId
+    client_secret = $clientSecret
+    resource      = $resource
+}
+
+$tokenResponse = Invoke-RestMethod -Method Post -Uri "https://login.microsoftonline.com/$tenantId/oauth2/token" -Body $body
+$accessToken = $tokenResponse.access_token
+
+# 2. Query Dataverse (e.g., Accounts)
+$headers = @{
+    Authorization = "Bearer $accessToken"
+    Accept        = "application/json"
+    OData-MaxVersion = "4.0"
+    OData-Version    = "4.0"
+}
+
+$response = Invoke-RestMethod -Method Get -Uri "$resource/api/data/v9.2/accounts?$select=name,accountnumber" -Headers $headers
+$response.value | ForEach-Object {
+    Write-Host "Account: $($_.name) | Number: $($_.accountnumber)"
+}
+
+# 3. Trigger a Power Automate Flow via HTTP
+$flowUrl = "https://prod-00.westeurope.logic.azure.com:443/workflows/yourflowid/triggers/manual/paths/invoke"
+$flowBody = @{
+    customerId = "12345"
+    status     = "active"
+}
+
+Invoke-RestMethod -Method Post -Uri $flowUrl -Headers $headers -Body ($flowBody | ConvertTo-Json)

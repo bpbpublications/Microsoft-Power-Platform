@@ -1,0 +1,87 @@
+using System;
+using Microsoft.Xrm.Sdk;
+using Microsoft.Xrm.Sdk.Query;
+
+namespace DataversePluginCRUD
+{
+    public class AccountCrudPlugin : IPlugin
+    {
+        public void Execute(IServiceProvider serviceProvider)
+        {
+            IPluginExecutionContext context = (IPluginExecutionContext)serviceProvider.GetService(typeof(IPluginExecutionContext));
+            IOrganizationServiceFactory serviceFactory = (IOrganizationServiceFactory)serviceProvider.GetService(typeof(IOrganizationServiceFactory));
+            IOrganizationService service = serviceFactory.CreateOrganizationService(context.UserId);
+
+            try
+            {
+                // -------------------------------
+                // CREATE
+                // -------------------------------
+                Entity account = new Entity("account");
+                account["name"] = "Contoso Ltd"; // Text field
+                account["revenue"] = new Money(50000m); // Currency field
+                account["createdon"] = DateTime.UtcNow; // Datetime field
+                account["new_statuscode"] = new OptionSetValue(100000000); // Option set
+                account["primarycontactid"] = new EntityReference("contact",
+                    new Guid("00000000-0000-0000-0000-000000000001")); // Lookup field
+
+                Guid accountId = service.Create(account);
+
+                // -------------------------------
+                // READ
+                // -------------------------------
+                ColumnSet cols = new ColumnSet("name", "revenue", "createdon", "new_statuscode", "primarycontactid");
+                Entity retrieved = service.Retrieve("account", accountId, cols);
+
+                string name = retrieved.GetAttributeValue<string>("name");
+                Money revenue = retrieved.GetAttributeValue<Money>("revenue");
+                DateTime createdOn = retrieved.GetAttributeValue<DateTime>("createdon");
+                OptionSetValue status = retrieved.GetAttributeValue<OptionSetValue>("new_statuscode");
+                EntityReference contact = retrieved.GetAttributeValue<EntityReference>("primarycontactid");
+
+                // -------------------------------
+                // UPDATE
+                // -------------------------------
+                Entity updateAccount = new Entity("account", accountId);
+                updateAccount["revenue"] = new Money(75000m); // Update currency
+                updateAccount["new_statuscode"] = new OptionSetValue(100000001); // Update option set
+                service.Update(updateAccount);
+
+                // -------------------------------
+                // RETRIEVE MULTIPLE with Linked Entity
+                // -------------------------------
+                QueryExpression query = new QueryExpression("account")
+                {
+                    ColumnSet = new ColumnSet("name", "revenue", "createdon")
+                };
+
+                // Link to Contact entity
+                query.AddLink("contact", "primarycontactid", "contactid", JoinOperator.Inner)
+                     .Columns.AddColumns("firstname", "lastname", "emailaddress1");
+
+                EntityCollection results = service.RetrieveMultiple(query);
+
+                foreach (Entity acc in results.Entities)
+                {
+                    string accName = acc.GetAttributeValue<string>("name");
+                    Money accRevenue = acc.GetAttributeValue<Money>("revenue");
+
+                    // Linked entity attributes are prefixed with alias
+                    var linkedContact = acc.GetAttributeValue<AliasedValue>("contact.firstname")?.Value;
+                    var linkedEmail = acc.GetAttributeValue<AliasedValue>("contact.emailaddress1")?.Value;
+
+                    Console.WriteLine($"Account: {accName}, Revenue: {accRevenue?.Value}, Contact: {linkedContact}, Email: {linkedEmail}");
+                }
+
+                // -------------------------------
+                // DELETE
+                // -------------------------------
+                service.Delete("account", accountId);
+            }
+            catch (Exception ex)
+            {
+                throw new InvalidPluginExecutionException($"CRUD operation failed: {ex.Message}", ex);
+            }
+        }
+    }
+}

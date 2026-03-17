@@ -1,0 +1,138 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Dataverse CRUD Web Resource</title>
+    <script type="text/javascript">
+        // Utility: validate fields before CRUD
+        function validateAccountData(data) {
+            if (!data.name || data.name.trim() === "") {
+                throw new Error("Account name (text field) is required.");
+            }
+            if (!data["primarycontactid@odata.bind"]) {
+                throw new Error("Primary Contact (lookup field) is required.");
+            }
+            if (typeof data.custom_statuscode !== "number") {
+                throw new Error("Status (option set) must be numeric.");
+            }
+            if (!data.createdon || isNaN(Date.parse(data.createdon))) {
+                throw new Error("CreatedOn (datetime) must be a valid date.");
+            }
+            if (typeof data.revenue !== "number") {
+                throw new Error("Revenue (currency) must be numeric.");
+            }
+        }
+
+        // -------------------------------
+        // CREATE
+        // -------------------------------
+        async function createAccount() {
+            const newAccount = {
+                name: "Contoso Ltd",                                // Text
+                "primarycontactid@odata.bind": "/contacts(00000000-0000-0000-0000-000000000001)", // Lookup
+                custom_statuscode: 100000000,                       // Option set
+                createdon: new Date().toISOString(),                // Datetime
+                revenue: 50000                                      // Currency
+            };
+
+            validateAccountData(newAccount);
+
+            Xrm.WebApi.createRecord("account", newAccount).then(
+                function success(result) {
+                    alert("Created Account ID: " + result.id);
+                },
+                function (error) {
+                    alert("Error creating account: " + error.message);
+                }
+            );
+        }
+
+        // -------------------------------
+        // READ
+        // -------------------------------
+        async function readAccount(accountId) {
+            Xrm.WebApi.retrieveRecord("account", accountId, "?$select=name,revenue,createdon,custom_statuscode").then(
+                function success(result) {
+                    alert("Account: " + result.name + 
+                          ", Revenue: " + result.revenue + 
+                          ", Created: " + result.createdon);
+                },
+                function (error) {
+                    alert("Error reading account: " + error.message);
+                }
+            );
+        }
+
+        // -------------------------------
+        // UPDATE
+        // -------------------------------
+        async function updateAccount(accountId) {
+            const updateData = {
+                revenue: 75000,
+                custom_statuscode: 100000001
+            };
+
+            Xrm.WebApi.updateRecord("account", accountId, updateData).then(
+                function success() {
+                    alert("Account updated.");
+                },
+                function (error) {
+                    alert("Error updating account: " + error.message);
+                }
+            );
+        }
+
+        // -------------------------------
+        // DELETE
+        // -------------------------------
+        async function deleteAccount(accountId) {
+            Xrm.WebApi.deleteRecord("account", accountId).then(
+                function success() {
+                    alert("Account deleted.");
+                },
+                function (error) {
+                    alert("Error deleting account: " + error.message);
+                }
+            );
+        }
+
+        // -------------------------------
+        // RETRIEVE MULTIPLE with Linked Entity
+        // -------------------------------
+        async function retrieveAccountsWithContacts() {
+            const fetchXml = `
+              <fetch top="10">
+                <entity name="account">
+                  <attribute name="name" />
+                  <attribute name="revenue" />
+                  <attribute name="createdon" />
+                  <link-entity name="contact" from="contactid" to="primarycontactid" alias="contact">
+                    <attribute name="firstname" />
+                    <attribute name="lastname" />
+                    <attribute name="emailaddress1" />
+                  </link-entity>
+                </entity>
+              </fetch>`;
+
+            Xrm.WebApi.retrieveMultipleRecords("account", "?fetchXml=" + encodeURIComponent(fetchXml)).then(
+                function success(result) {
+                    result.entities.forEach(acc => {
+                        alert("Account: " + acc.name + 
+                              ", Revenue: " + acc.revenue + 
+                              ", Contact: " + acc["contact.firstname"] + 
+                              " " + acc["contact.lastname"] + 
+                              ", Email: " + acc["contact.emailaddress1"]);
+                    });
+                },
+                function (error) {
+                    alert("Error retrieving accounts: " + error.message);
+                }
+            );
+        }
+    </script>
+</head>
+<body>
+    <h2>Dataverse CRUD Web Resource</h2>
+    <button onclick="createAccount()">Create Account</button>
+    <button onclick="retrieveAccountsWithContacts()">Retrieve Accounts with Contacts</button>
+</body>
+</html>

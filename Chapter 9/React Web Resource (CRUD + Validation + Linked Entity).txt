@@ -1,0 +1,129 @@
+import React, { useState } from "react";
+
+// Utility: validate fields before CRUD
+function validateAccountData(data) {
+  if (!data.name || data.name.trim() === "") {
+    throw new Error("Account name (text field) is required.");
+  }
+  if (!data["primarycontactid@odata.bind"]) {
+    throw new Error("Primary Contact (lookup field) is required.");
+  }
+  if (typeof data.custom_statuscode !== "number") {
+    throw new Error("Status (option set) must be numeric.");
+  }
+  if (!data.createdon || isNaN(Date.parse(data.createdon))) {
+    throw new Error("CreatedOn (datetime) must be a valid date.");
+  }
+  if (typeof data.revenue !== "number") {
+    throw new Error("Revenue (currency) must be numeric.");
+  }
+}
+
+export default function AccountCrud() {
+  const [accountId, setAccountId] = useState(null);
+
+  // -------------------------------
+  // CREATE
+  // -------------------------------
+  const createAccount = async () => {
+    const newAccount = {
+      name: "Contoso Ltd",                                // Text
+      "primarycontactid@odata.bind": "/contacts(00000000-0000-0000-0000-000000000001)", // Lookup
+      custom_statuscode: 100000000,                       // Option set
+      createdon: new Date().toISOString(),                // Datetime
+      revenue: 50000                                      // Currency
+    };
+
+    try {
+      validateAccountData(newAccount);
+      const result = await Xrm.WebApi.createRecord("account", newAccount);
+      alert("Created Account ID: " + result.id);
+      setAccountId(result.id);
+    } catch (error) {
+      alert("Error creating account: " + error.message);
+    }
+  };
+
+  // -------------------------------
+  // READ
+  // -------------------------------
+  const readAccount = async () => {
+    if (!accountId) return alert("No account created yet.");
+    try {
+      const result = await Xrm.WebApi.retrieveRecord("account", accountId, "?$select=name,revenue,createdon,custom_statuscode");
+      alert(`Account: ${result.name}, Revenue: ${result.revenue}, Created: ${result.createdon}`);
+    } catch (error) {
+      alert("Error reading account: " + error.message);
+    }
+  };
+
+  // -------------------------------
+  // UPDATE
+  // -------------------------------
+  const updateAccount = async () => {
+    if (!accountId) return alert("No account created yet.");
+    const updateData = {
+      revenue: 75000,
+      custom_statuscode: 100000001
+    };
+    try {
+      await Xrm.WebApi.updateRecord("account", accountId, updateData);
+      alert("Account updated.");
+    } catch (error) {
+      alert("Error updating account: " + error.message);
+    }
+  };
+
+  // -------------------------------
+  // DELETE
+  // -------------------------------
+  const deleteAccount = async () => {
+    if (!accountId) return alert("No account created yet.");
+    try {
+      await Xrm.WebApi.deleteRecord("account", accountId);
+      alert("Account deleted.");
+      setAccountId(null);
+    } catch (error) {
+      alert("Error deleting account: " + error.message);
+    }
+  };
+
+  // -------------------------------
+  // RETRIEVE MULTIPLE with Linked Entity
+  // -------------------------------
+  const retrieveAccountsWithContacts = async () => {
+    const fetchXml = `
+      <fetch top="10">
+        <entity name="account">
+          <attribute name="name" />
+          <attribute name="revenue" />
+          <attribute name="createdon" />
+          <link-entity name="contact" from="contactid" to="primarycontactid" alias="contact">
+            <attribute name="firstname" />
+            <attribute name="lastname" />
+            <attribute name="emailaddress1" />
+          </link-entity>
+        </entity>
+      </fetch>`;
+
+    try {
+      const result = await Xrm.WebApi.retrieveMultipleRecords("account", "?fetchXml=" + encodeURIComponent(fetchXml));
+      result.entities.forEach(acc => {
+        alert(`Account: ${acc.name}, Revenue: ${acc.revenue}, Contact: ${acc["contact.firstname"]} ${acc["contact.lastname"]}, Email: ${acc["contact.emailaddress1"]}`);
+      });
+    } catch (error) {
+      alert("Error retrieving accounts: " + error.message);
+    }
+  };
+
+  return (
+    <div>
+      <h2>Dataverse CRUD React Web Resource</h2>
+      <button onClick={createAccount}>Create Account</button>
+      <button onClick={readAccount}>Read Account</button>
+      <button onClick={updateAccount}>Update Account</button>
+      <button onClick={deleteAccount}>Delete Account</button>
+      <button onClick={retrieveAccountsWithContacts}>Retrieve Accounts with Contacts</button>
+    </div>
+  );
+}

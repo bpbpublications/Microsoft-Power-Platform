@@ -1,0 +1,33 @@
+import requests
+
+tenant_id = "your-tenant-id"
+client_id = "your-client-id"
+client_secret = "your-client-secret"
+resource = "https://yourorg.crm.dynamics.com"
+
+# 1. Get OAuth token
+token_url = f"https://login.microsoftonline.com/{tenant_id}/oauth2/token"
+body = {
+    "grant_type": "client_credentials",
+    "client_id": client_id,
+    "client_secret": client_secret,
+    "resource": resource
+}
+token_response = requests.post(token_url, data=body).json()
+access_token = token_response["access_token"]
+
+headers = {
+    "Authorization": f"Bearer {access_token}",
+    "Accept": "application/json"
+}
+
+# 2. Query Dataverse
+dataverse_url = f"{resource}/api/data/v9.2/accounts?$select=name,accountnumber"
+response = requests.get(dataverse_url, headers=headers).json()
+for account in response["value"]:
+    print(f"Account: {account['name']} | Number: {account['accountnumber']}")
+
+# 3. Trigger Power Automate Flow
+flow_url = "https://prod.flow.microsoft.com/api/flows/yourflowid/run"
+flow_body = { "customerId": "12345", "status": "active" }
+requests.post(flow_url, headers=headers, json=flow_body)

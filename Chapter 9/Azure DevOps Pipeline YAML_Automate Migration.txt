@@ -1,0 +1,62 @@
+trigger:
+- main
+
+pool:
+  vmImage: 'windows-latest'
+
+variables:
+  SolutionName: 'MySolution'
+  PublisherName: 'MyPublisher'
+  SolutionVersion: '1.0.0.0'
+  SourceEnvUrl: 'https://source.crm.dynamics.com'
+  TargetEnvUrl: 'https://target.crm.dynamics.com'
+
+steps:
+# 1. Install Power Platform CLI
+- task: PowerShell@2
+  displayName: 'Install Power Platform CLI'
+  inputs:
+    targetType: 'inline'
+    script: |
+      dotnet tool install --global Microsoft.PowerPlatform.Cds.Client
+      dotnet tool install --global Microsoft.PowerPlatform.CLI
+
+# 2. Export Solution from Source
+- task: PowerShell@2
+  displayName: 'Export Solution'
+  inputs:
+    targetType: 'inline'
+    script: |
+      pac auth create --url $(SourceEnvUrl) --name SourceEnv
+      pac solution export --path $(Build.ArtifactStagingDirectory)/$(SolutionName).zip `
+                          --name $(SolutionName) `
+                          --publisher $(PublisherName) `
+                          --version $(SolutionVersion)
+
+# 3. Publish Solution Artifact
+- task: PublishBuildArtifacts@1
+  inputs:
+    PathtoPublish: '$(Build.ArtifactStagingDirectory)'
+    ArtifactName: 'drop'
+    publishLocation: 'Container'
+
+# 4. Import Solution into Target
+- task: PowerPlatformImportSolution@0
+  displayName: 'Import Solution'
+  inputs:
+    authenticationType: 'PowerPlatformSPN'
+    solutionInputFile: '$(Pipeline.Workspace)/drop/$(SolutionName).zip'
+    environmentUrl: $(TargetEnvUrl)
+
+# 5. Configuration Data Migration
+- task: PowerShell@2
+  displayName: 'Migrate Configuration Data'
+  inputs:
+    targetType: 'inline'
+    script: |
+      Import-Module Microsoft.Xrm.Tooling.ConfigurationMigration
+      Export-CrmConfiguration -ConnectionString "AuthType=OAuth;Url=$(SourceEnvUrl);..." `
+                              -SchemaFile "schema.xml" `
+                              -DataFile "$(Build.ArtifactStagingDirectory)/configdata.zip"
+      Import-CrmConfiguration -ConnectionString "AuthType=OAuth;Url=$(TargetEnvUrl);..." `
+                              -DataFile "$(Build.ArtifactStagingDirectory)/configdata.zip"

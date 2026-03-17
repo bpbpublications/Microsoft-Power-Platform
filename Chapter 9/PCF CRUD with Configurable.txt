@@ -1,0 +1,136 @@
+// Manifest file
+
+
+<manifest>
+  <control namespace="DataverseControls" constructor="AccountCrudPCF" version="1.0.0">
+    <properties>
+      <!-- Configurable entity name -->
+      <property name="entityName" display-name-key="Entity Name" type="SingleLine.Text" required="true" />
+
+      <!-- Configurable lookup field -->
+      <property name="lookupField" display-name-key="Lookup Field" type="SingleLine.Text" required="true" />
+
+      <!-- Configurable option set field -->
+      <property name="optionSetField" display-name-key="Option Set Field" type="SingleLine.Text" required="true" />
+
+      <!-- Configurable currency field -->
+      <property name="currencyField" display-name-key="Currency Field" type="SingleLine.Text" required="true" />
+
+      <!-- Configurable datetime field -->
+      <property name="dateField" display-name-key="Date Field" type="SingleLine.Text" required="true" />
+    </properties>
+    <resources>
+      <code path="index.ts" order="1" />
+    </resources>
+  </control>
+</manifest>
+
+
+//index.ts file
+
+
+import { IInputs, IOutputs } from "./generated/ManifestTypes";
+
+export class AccountCrudPCF implements ComponentFramework.StandardControl<IInputs, IOutputs> {
+    private context: ComponentFramework.Context<IInputs>;
+    private container: HTMLDivElement;
+    private recordId: string | null = null;
+
+    public init(context: ComponentFramework.Context<IInputs>, notifyOutputChanged: () => void, state: ComponentFramework.Dictionary, container: HTMLDivElement) {
+        this.context = context;
+        this.container = container;
+
+        // UI buttons
+        ["Create", "Read", "Update", "Delete", "Retrieve"].forEach(action => {
+            const btn = document.createElement("button");
+            btn.innerText = action + " Record";
+            btn.onclick = () => this.handleAction(action);
+            this.container.appendChild(btn);
+        });
+    }
+
+    public updateView(context: ComponentFramework.Context<IInputs>): void {
+        this.context = context;
+    }
+    public getOutputs(): IOutputs { return {}; }
+    public destroy(): void {}
+
+    private async handleAction(action: string) {
+        const entityName = this.context.parameters.entityName.raw!;
+        const lookupField = this.context.parameters.lookupField.raw!;
+        const optionSetField = this.context.parameters.optionSetField.raw!;
+        const currencyField = this.context.parameters.currencyField.raw!;
+        const dateField = this.context.parameters.dateField.raw!;
+
+        try {
+            switch (action) {
+                case "Create":
+                    const newRecord: any = {
+                        name: "Contoso Ltd",
+                        [`${lookupField}@odata.bind`]: "/contacts(00000000-0000-0000-0000-000000000001)",
+                        [optionSetField]: 100000000,
+                        [dateField]: new Date().toISOString(),
+                        [currencyField]: 50000
+                    };
+                    this.validateRecord(newRecord);
+                    const result = await this.context.webAPI.createRecord(entityName, newRecord);
+                    this.recordId = result.id;
+                    alert("Created record ID: " + result.id);
+                    break;
+
+                case "Read":
+                    if (!this.recordId) return alert("No record created yet.");
+                    const record = await this.context.webAPI.retrieveRecord(entityName, this.recordId, `?$select=name,${currencyField},${dateField},${optionSetField}`);
+                    alert(`Record: ${record.name}, Revenue: ${record[currencyField]}, Created: ${record[dateField]}`);
+                    break;
+
+                case "Update":
+                    if (!this.recordId) return alert("No record created yet.");
+                    const updateData: any = {
+                        [currencyField]: 75000,
+                        [optionSetField]: 100000001
+                    };
+                    await this.context.webAPI.updateRecord(entityName, this.recordId, updateData);
+                    alert("Record updated.");
+                    break;
+
+                case "Delete":
+                    if (!this.recordId) return alert("No record created yet.");
+                    await this.context.webAPI.deleteRecord(entityName, this.recordId);
+                    alert("Record deleted.");
+                    this.recordId = null;
+                    break;
+
+                case "Retrieve":
+                    const fetchXml = `
+                      <fetch top="10">
+                        <entity name="${entityName}">
+                          <attribute name="name" />
+                          <attribute name="${currencyField}" />
+                          <attribute name="${dateField}" />
+                          <link-entity name="contact" from="contactid" to="${lookupField}" alias="contact">
+                            <attribute name="firstname" />
+                            <attribute name="lastname" />
+                            <attribute name="emailaddress1" />
+                          </link-entity>
+                        </entity>
+                      </fetch>`;
+                    const results = await this.context.webAPI.retrieveMultipleRecords(entityName, "?fetchXml=" + encodeURIComponent(fetchXml));
+                    results.entities.forEach(rec => {
+                        alert(`Record: ${rec.name}, Revenue: ${rec[currencyField]}, Contact: ${rec["contact.firstname"]} ${rec["contact.lastname"]}, Email: ${rec["contact.emailaddress1"]}`);
+                    });
+                    break;
+            }
+        } catch (error: any) {
+            alert("Error: " + error.message);
+        }
+    }
+
+    private validateRecord(data: any) {
+        if (!data.name || data.name.trim() === "") throw new Error("Name is required.");
+        if (!data["primarycontactid@odata.bind"]) throw new Error("Lookup is required.");
+        if (typeof data.custom_statuscode !== "number") throw new Error("Option set must be numeric.");
+        if (!data.createdon || isNaN(Date.parse(data.createdon))) throw new Error("Datetime must be valid.");
+        if (typeof data.revenue !== "number") throw new Error("Currency must be numeric.");
+    }
+}

@@ -1,0 +1,64 @@
+//Environment Inventory & Audit (List all environments, their admins, and capacity usage)
+
+# Install module
+Install-Module -Name Microsoft.PowerApps.Administration.PowerShell -Force
+
+# List environments
+Get-AdminPowerAppEnvironment
+
+# List admins for each environment
+Get-AdminPowerAppEnvironmentRoleAssignment -EnvironmentName "Default"
+
+//Solution Export/Import Automation (Standardize ALM)
+
+# Export solution
+pac solution export --name ContosoSolution --path ./exports --managed true
+
+# Import solution
+pac solution import --path ./exports/ContosoSolution.zip --targetEnvironment Test
+
+//App & Flow Inventory (Identify orphaned apps/flows, owners, and usage)
+
+# List all apps
+Get-AdminPowerApp
+
+# List all flows
+Get-AdminFlow
+
+# Find orphaned flows (no owner)
+Get-AdminFlow | Where-Object { $_.Owner -eq $null }
+
+//Data Loss Prevention (DLP) Policy Enforcement(Ensure connectors are compliant with governance rules)
+
+# Get all DLP policies
+Get-AdminDlpPolicy
+
+# Create new DLP policy
+New-AdminDlpPolicy -DisplayName "Restrict Social Connectors" -BusinessDataGroupConnectors @("sql","sharepoint") -NonBusinessDataGroupConnectors @("twitter","facebook")
+
+//Capacity & Resource Monitoring(Track Dataverse storage, log usage, and alert thresholds)
+
+# Get capacity report
+Get-AdminPowerAppEnvironmentCapacity -EnvironmentName "Prod"
+
+# Export to CSV for reporting
+Get-AdminPowerAppEnvironmentCapacity | Export-Csv -Path ./capacityReport.csv -NoTypeInformation
+
+
+//Scheduled Maintenance Jobs(Automate cleanup of unused apps/flows, rotate service accounts)
+
+jobs:
+  cleanup:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Install PowerShell Modules
+        run: pwsh -Command "Install-Module Microsoft.PowerApps.Administration.PowerShell -Force"
+      - name: Cleanup Orphaned Flows
+        run: pwsh -Command "Get-AdminFlow | Where-Object { $_.Owner -eq $null } | Remove-AdminFlow"
+
+
+
+
+
+
+

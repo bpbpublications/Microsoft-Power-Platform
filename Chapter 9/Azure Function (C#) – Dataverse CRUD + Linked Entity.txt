@@ -1,0 +1,107 @@
+using System;
+using System.IO;
+using System.Threading.Tasks;
+using Microsoft.AspNetCore.Mvc;
+using Microsoft.Azure.WebJobs;
+using Microsoft.Azure.WebJobs.Extensions.Http;
+using Microsoft.AspNetCore.Http;
+using Microsoft.Extensions.Logging;
+using Microsoft.Xrm.Sdk;
+using Microsoft.Xrm.Sdk.Query;
+using Microsoft.PowerPlatform.Dataverse.Client;
+
+namespace DataverseAzureFunction
+{
+    public static class Function1
+    {
+        [FunctionName("DataverseCrudFunction")]
+        public static async Task<IActionResult> Run(
+            [HttpTrigger(AuthorizationLevel.Function, "get", "post", "put", "delete")] HttpRequest req,
+            ILogger log)
+        {
+            log.LogInformation("Dataverse CRUD Azure Function triggered.");
+
+            // Connection string (use Azure Key Vault for secrets in production)
+            string connectionString = Environment.GetEnvironmentVariable("DataverseConnectionString");
+            using ServiceClient service = new ServiceClient(connectionString);
+
+            string action = req.Query["action"];
+            string entityName = "account";
+            Guid recordId = Guid.Empty;
+
+            try
+            {
+                switch (action?.ToLower())
+                {
+                    case "create":
+                        Entity account = new Entity(entityName);
+                        account["name"] = "Contoso Ltd"; // Text
+                        account["revenue"] = new Money(50000m); // Currency
+                        account["createdon"] = DateTime.UtcNow; // Datetime
+                        account["new_statuscode"] = new OptionSetValue(100000000); // Option set
+                        account["primarycontactid"] = new EntityReference("contact",
+                            new Guid("00000000-0000-0000-0000-000000000001")); // Lookup
+
+                        recordId = service.Create(account);
+                        return new OkObjectResult($"Created Account ID: {recordId}");
+
+                    case "read":
+                        recordId = Guid.Parse(req.Query["id"]);
+                        ColumnSet cols = new ColumnSet("name", "revenue", "createdon", "new_statuscode", "primarycontactid");
+                        Entity retrieved = service.Retrieve(entityName, recordId, cols);
+
+                        return new OkObjectResult(new
+                        {
+                            Name = retrieved.GetAttributeValue<string>("name"),
+                            Revenue = retrieved.GetAttributeValue<Money>("revenue")?.Value,
+                            CreatedOn = retrieved.GetAttributeValue<DateTime>("createdon"),
+                            Status = retrieved.GetAttributeValue<OptionSetValue>("new_statuscode")?.Value,
+                            ContactId = retrieved.GetAttributeValue<EntityReference>("primarycontactid")?.Id
+                        });
+
+                    case "update":
+                        recordId = Guid.Parse(req.Query["id"]);
+                        Entity updateAccount = new Entity(entityName, recordId);
+                        updateAccount["revenue"] = new Money(75000m);
+                        updateAccount["new_statuscode"] = new OptionSetValue(100000001);
+                        service.Update(updateAccount);
+                        return new OkObjectResult("Account updated.");
+
+                    case "delete":
+                        recordId = Guid.Parse(req.Query["id"]);
+                        service.Delete(entityName, recordId);
+                        return new OkObjectResult("Account deleted.");
+
+                    case "retrieve":
+                        QueryExpression query = new QueryExpression(entityName)
+                        {
+                            ColumnSet = new ColumnSet("name", "revenue", "createdon")
+                        };
+                        query.AddLink("contact", "primarycontactid", "contactid", JoinOperator.Inner)
+                             .Columns.AddColumns("firstname", "lastname", "emailaddress1");
+
+                        EntityCollection results = service.RetrieveMultiple(query);
+                        var output = new System.Text.StringBuilder();
+                        foreach (Entity acc in results.Entities)
+                        {
+                            string accName = acc.GetAttributeValue<string>("name");
+                            Money accRevenue = acc.GetAttributeValue<Money>("revenue");
+                            var contactFirst = acc.GetAttributeValue<AliasedValue>("contact.firstname")?.Value;
+                            var contactEmail = acc.GetAttributeValue<AliasedValue>("contact.emailaddress1")?.Value;
+
+                            output.AppendLine($"Account: {accName}, Revenue: {accRevenue?.Value}, Contact: {contactFirst}, Email: {contactEmail}");
+                        }
+                        return new OkObjectResult(output.ToString());
+
+                    default:
+                        return new BadRequestObjectResult("Invalid action. Use create, read, update, delete, or retrieve.");
+                }
+            }
+            catch (Exception ex)
+            {
+                log.LogError(ex, "Error executing CRUD operation.");
+                return new BadRequestObjectResult($"Error: {ex.Message}");
+            }
+        }
+    }
+}

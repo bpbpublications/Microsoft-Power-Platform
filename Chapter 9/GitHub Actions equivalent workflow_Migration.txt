@@ -1,0 +1,69 @@
+name: Power Platform Migration
+
+on:
+  push:
+    branches:
+      - main
+
+jobs:
+  migrate:
+    runs-on: windows-latest
+
+    env:
+      SOLUTION_NAME: MySolution
+      PUBLISHER_NAME: MyPublisher
+      SOLUTION_VERSION: 1.0.0.0
+      SOURCE_ENV_URL: https://source.crm.dynamics.com
+      TARGET_ENV_URL: https://target.crm.dynamics.com
+
+    steps:
+    # 1. Checkout repository
+    - name: Checkout
+      uses: actions/checkout@v3
+
+    # 2. Install Power Platform CLI
+    - name: Install Power Platform CLI
+      run: |
+        dotnet tool install --global Microsoft.PowerPlatform.CLI
+        echo "::add-path::$env:USERPROFILE\.dotnet\tools"
+
+    # 3. Authenticate with Source Environment
+    - name: Authenticate Source
+      run: |
+        pac auth create --url ${{ env.SOURCE_ENV_URL }} --name SourceEnv
+
+    # 4. Export Solution
+    - name: Export Solution
+      run: |
+        pac solution export --path ./artifacts/${{ env.SOLUTION_NAME }}.zip `
+                            --name ${{ env.SOLUTION_NAME }} `
+                            --publisher ${{ env.PUBLISHER_NAME }} `
+                            --version ${{ env.SOLUTION_VERSION }}
+
+    # 5. Upload Artifact
+    - name: Upload Solution Artifact
+      uses: actions/upload-artifact@v3
+      with:
+        name: solution
+        path: ./artifacts/${{ env.SOLUTION_NAME }}.zip
+
+    # 6. Authenticate with Target Environment
+    - name: Authenticate Target
+      run: |
+        pac auth create --url ${{ env.TARGET_ENV_URL }} --name TargetEnv
+
+    # 7. Import Solution
+    - name: Import Solution
+      run: |
+        pac solution import --path ./artifacts/${{ env.SOLUTION_NAME }}.zip `
+                            --target ${{ env.TARGET_ENV_URL }}
+
+    # 8. Configuration Data Migration
+    - name: Migrate Configuration Data
+      run: |
+        Import-Module Microsoft.Xrm.Tooling.ConfigurationMigration
+        Export-CrmConfiguration -ConnectionString "AuthType=OAuth;Url=${{ env.SOURCE_ENV_URL }};..." `
+                                -SchemaFile "schema.xml" `
+                                -DataFile "./artifacts/configdata.zip"
+        Import-CrmConfiguration -ConnectionString "AuthType=OAuth;Url=${{ env.TARGET_ENV_URL }};..." `
+                                -DataFile "./artifacts/configdata.zip"
